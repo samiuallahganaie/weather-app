@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<meta name="description" content="SkyCast, a weather app by Samiuallah built with HTML, CSS and JavaScript using the Open-Meteo API.">
+<meta name="description" content="SkyCast, a weather app by Samiuallah that finds the weather for any place, built with HTML, CSS and JavaScript.">
 <title>SkyCast | Weather App</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Lexend:wght@500;600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -97,15 +97,22 @@ footer{text-align:center;padding:18px 0;color:var(--soft);font-size:14px}
 <main>
   <div class="container">
     <h1>Weather, anywhere</h1>
-    <p class="sub">Search for a city to see the current weather and a 5-day forecast.</p>
+    <p class="sub">Search any place: a city, town, village, area, landmark, postcode or coordinates.</p>
 
     <form class="search" id="form" role="search">
       <label for="q" hidden>City name</label>
-      <input id="q" type="search" placeholder="Search a city, e.g. Bengaluru" autocomplete="off" required>
+      <input id="q" type="search" placeholder="Search any place, e.g. Hampi" autocomplete="off" required>
       <button class="btn" type="submit">Search</button>
       <button class="btn glass" type="button" id="locate">Use my location</button>
     </form>
 
+    <div class="chips" id="examples" aria-label="Example searches">
+      <span class="label">Try:</span>
+      <button class="chip" type="button" data-q="Hampi">Hampi</button>
+      <button class="chip" type="button" data-q="Eiffel Tower">Eiffel Tower</button>
+      <button class="chip" type="button" data-q="560001">560001</button>
+      <button class="chip" type="button" data-q="34.19, 74.36">34.19, 74.36</button>
+    </div>
     <div class="chips" id="alts" hidden></div>
     <div class="chips" id="recent" hidden></div>
     <p id="msg" role="status" aria-live="polite"></p>
@@ -137,7 +144,7 @@ footer{text-align:center;padding:18px 0;color:var(--soft);font-size:14px}
       <div class="forecast" id="forecast"></div>
     </section>
 
-    <p class="credit">Weather data by <a href="https://open-meteo.com/" target="_blank" rel="noopener noreferrer">Open-Meteo.com</a></p>
+    <p class="credit">Weather data by <a href="https://open-meteo.com/" target="_blank" rel="noopener noreferrer">Open-Meteo.com</a> | Places from <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener noreferrer">OpenStreetMap contributors</a></p>
   </div>
 </main>
 
@@ -145,6 +152,7 @@ footer{text-align:center;padding:18px 0;color:var(--soft);font-size:14px}
 
 <script>
   const GEO = "https://geocoding-api.open-meteo.com/v1/search";
+  const NOMINATIM = "https://nominatim.openstreetmap.org/search";
   const FORECAST = "https://api.open-meteo.com/v1/forecast";
 
   const $ = id => document.getElementById(id);
@@ -230,19 +238,65 @@ footer{text-align:center;padding:18px 0;color:var(--soft);font-size:14px}
     });
   }
 
+  const COORDS = /^\s*(-?\d{1,2}(?:\.\d+)?)\s*[,;\s]\s*(-?\d{1,3}(?:\.\d+)?)\s*$/;
+  const KINDS = { tourism: "Attraction", amenity: "Place", building: "Building", road: "Road", highway: "Road",
+                  postcode: "Postcode", county: "District", state_district: "District", suburb: "Area",
+                  neighbourhood: "Area", quarter: "Area", city_district: "City district" };
+
+  function kindLabel(t) {
+    if (!t) return "";
+    if (KINDS[t]) return KINDS[t];
+    const x = t.replace(/_/g, " ");
+    return x.charAt(0).toUpperCase() + x.slice(1);
+  }
+
+  function fromOSM(r) {
+    const a = r.address || {};
+    const name = r.name || (r.display_name || "").split(",")[0].trim();
+    const admin = [a.county || a.state_district, a.state].filter(Boolean);
+    return { name, admin1: admin.join(", "), country: a.country || "", kind: kindLabel(r.addresstype || r.type),
+             latitude: +(+r.lat).toFixed(4), longitude: +(+r.lon).toFixed(4) };
+  }
+
+  function dedupe(list) {
+    const seen = new Set();
+    return list.filter(p => { const k = p.name + "|" + p.admin1 + "|" + p.country; if (seen.has(k)) return false; seen.add(k); return true; });
+  }
+
+  async function findPlaces(query) {
+    try {
+      const j = await getJSON(NOMINATIM + "?q=" + encodeURIComponent(query) + "&format=jsonv2&addressdetails=1&limit=6&accept-language=en");
+      if (Array.isArray(j)) {
+        const list = dedupe(j.filter(r => r && r.lat && r.lon).map(fromOSM));
+        if (list.length) return list;
+      }
+    } catch (e) { /* fall back to the city search below */ }
+    const g = await getJSON(GEO + "?name=" + encodeURIComponent(query) + "&count=5&language=en&format=json");
+    return (g.results || []).map(r => ({ name: r.name, admin1: r.admin1 || "", country: r.country || "", kind: "",
+                                         latitude: r.latitude, longitude: r.longitude }));
+  }
+
   async function search(query) {
+    const m = query.match(COORDS);
+    if (m) {
+      const lat = +m[1], lon = +m[2];
+      if (Math.abs(lat) <= 90 && Math.abs(lon) <= 180) {
+        $("alts").hidden = true;
+        return loadPlace({ name: lat + ", " + lon, admin1: "", country: "", kind: "Coordinates", latitude: lat, longitude: lon });
+      }
+    }
     setMsg("Searching...");
     try {
-      const j = await getJSON(GEO + "?name=" + encodeURIComponent(query) + "&count=5&language=en&format=json");
-      if (!j.results || !j.results.length) {
+      const results = await findPlaces(query);
+      if (!results.length) {
         $("alts").hidden = true;
-        setMsg("No city found for \"" + query + "\". Check the spelling and try again.", true);
+        setMsg("No place found for \"" + query + "\". Try a nearby town, a postcode or coordinates.", true);
         return;
       }
-      renderAlts(j.results);
-      await loadPlace(j.results[0], true);
+      renderAlts(results);
+      await loadPlace(results[0], true);
     } catch (e) {
-      setMsg("Could not reach the weather service. Check your connection and try again.", true);
+      setMsg("Could not reach the search service. Check your connection and try again.", true);
     }
   }
 
@@ -272,7 +326,7 @@ footer{text-align:center;padding:18px 0;color:var(--soft);font-size:14px}
 
     $("result").hidden = false;
     $("place").textContent = place.name;
-    $("where").textContent = [place.admin1, place.country].filter(Boolean).join(", ");
+    $("where").textContent = [place.kind, [place.admin1, place.country].filter(Boolean).join(", ")].filter(Boolean).join(" | ");
     $("cond").textContent = text;
     $("icon").textContent = icon;
     $("temp").textContent = temp(c.temperature_2m);
@@ -318,6 +372,11 @@ footer{text-align:center;padding:18px 0;color:var(--soft);font-size:14px}
     render();
   }));
   document.querySelectorAll(".units button").forEach(x => x.setAttribute("aria-pressed", String(x.dataset.u === unit)));
+
+  document.querySelectorAll("#examples .chip").forEach(b => b.addEventListener("click", () => {
+    $("q").value = b.dataset.q;
+    search(b.dataset.q);
+  }));
 
   const recent = getRecent();
   renderRecent(recent);
