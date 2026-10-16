@@ -1,0 +1,327 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="description" content="SkyCast, a weather app by Samiuallah built with HTML, CSS and JavaScript using the Open-Meteo API.">
+<title>SkyCast | Weather App</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Lexend:wght@500;600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root{--ink:#fff;--soft:rgba(255,255,255,.78);--glass:rgba(255,255,255,.16);--glass-line:rgba(255,255,255,.3);--sun:#fde047}
+*{margin:0;padding:0;box-sizing:border-box}
+body{
+  font-family:Inter,system-ui,Arial,sans-serif;color:var(--ink);line-height:1.5;min-height:100vh;display:flex;flex-direction:column;
+  background:linear-gradient(160deg,#1d4ed8 0%,#38bdf8 100%);background-attachment:fixed;transition:background .6s;
+}
+body[data-theme="clear-day"]{background:linear-gradient(160deg,#1d4ed8 0%,#38bdf8 100%)}
+body[data-theme="clear-night"]{background:linear-gradient(160deg,#0f172a 0%,#312e81 100%)}
+body[data-theme="cloudy"]{background:linear-gradient(160deg,#475569 0%,#94a3b8 100%)}
+body[data-theme="fog"]{background:linear-gradient(160deg,#64748b 0%,#cbd5e1 100%)}
+body[data-theme="rain"]{background:linear-gradient(160deg,#1e293b 0%,#475569 100%)}
+body[data-theme="snow"]{background:linear-gradient(160deg,#3b5b86 0%,#9db8d9 100%)}
+body[data-theme="storm"]{background:linear-gradient(160deg,#1e1b4b 0%,#4c1d95 100%)}
+h1,h2,.logo,.temp{font-family:Lexend,Inter,Arial,sans-serif}
+button,input{font:inherit;color:inherit}
+:focus-visible{outline:3px solid var(--sun);outline-offset:3px;border-radius:12px}
+.container{width:min(820px,92%);margin:auto}
+header .bar{min-height:66px;display:flex;align-items:center;justify-content:space-between;gap:12px}
+.logo{font-size:23px;font-weight:700}
+.logo span{color:var(--sun)}
+.home{color:var(--ink);text-decoration:none;font-weight:600;padding:7px 16px;border:1.5px solid var(--glass-line);border-radius:999px;background:var(--glass)}
+.home:hover{background:rgba(255,255,255,.28)}
+main{flex:1;padding:6px 0 40px}
+h1{text-align:center;font-size:clamp(28px,5.5vw,42px);font-weight:700;margin-bottom:4px}
+.sub{text-align:center;color:var(--soft);margin-bottom:20px}
+
+.search{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:12px}
+.search input{flex:1;min-width:200px;padding:13px 18px;border-radius:999px;border:1.5px solid var(--glass-line);background:rgba(255,255,255,.22);color:#fff}
+.search input::placeholder{color:rgba(255,255,255,.75)}
+.search input:focus{background:rgba(255,255,255,.3);outline:3px solid var(--sun);outline-offset:2px}
+.btn{padding:12px 22px;border:0;border-radius:999px;background:#fff;color:#0f2a55;font-weight:700;cursor:pointer;transition:transform .2s}
+.btn:hover{transform:translateY(-2px)}
+.btn.glass{background:var(--glass);color:#fff;border:1.5px solid var(--glass-line)}
+.chips{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px;min-height:0}
+.chips .label{color:var(--soft);font-size:14px;align-self:center}
+.chip{padding:5px 14px;border-radius:999px;border:1.5px solid var(--glass-line);background:var(--glass);cursor:pointer;font-size:14px;font-weight:500}
+.chip:hover{background:rgba(255,255,255,.3)}
+#msg{min-height:1.6em;margin-bottom:10px;font-weight:600}
+#msg.err{background:rgba(127,29,29,.55);padding:10px 16px;border-radius:12px}
+
+.card{background:var(--glass);border:1.5px solid var(--glass-line);border-radius:24px;padding:clamp(18px,4vw,30px);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);box-shadow:0 18px 50px rgba(0,0,0,.2)}
+.now{display:grid;grid-template-columns:1fr auto;gap:12px;align-items:center}
+.place{font-size:clamp(20px,4vw,28px);font-weight:600;font-family:Lexend,sans-serif}
+.where{color:var(--soft)}
+.cond{font-size:18px;margin-top:6px}
+.big{text-align:right}
+.icon{font-size:clamp(54px,12vw,84px);line-height:1}
+.temp{font-size:clamp(44px,10vw,70px);font-weight:700;line-height:1}
+.toolbar{display:flex;justify-content:flex-end;margin:6px 0 14px}
+.units{display:inline-flex;border:1.5px solid var(--glass-line);border-radius:999px;overflow:hidden}
+.units button{padding:5px 16px;background:transparent;border:0;cursor:pointer;font-weight:700}
+.units button[aria-pressed="true"]{background:#fff;color:#0f2a55}
+.stats{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin:16px 0 22px}
+.stat{background:rgba(255,255,255,.14);border-radius:14px;padding:10px 12px;text-align:center}
+.stat small{display:block;color:var(--soft);font-size:12px;letter-spacing:.06em;text-transform:uppercase}
+.stat b{font-size:18px;font-family:Lexend,sans-serif}
+h2{font-size:17px;margin-bottom:10px;font-weight:600}
+.forecast{display:grid;grid-template-columns:repeat(5,1fr);gap:10px}
+.day{background:rgba(255,255,255,.14);border-radius:16px;padding:12px 6px;text-align:center}
+.day .d{font-weight:600;font-size:14px}
+.day .i{font-size:30px;margin:2px 0}
+.day .t{font-size:14px}
+.day .t span{color:var(--soft)}
+.credit{margin-top:14px;text-align:center;color:var(--soft);font-size:13px}
+.credit a{color:#fff}
+[hidden]{display:none!important}
+footer{text-align:center;padding:18px 0;color:var(--soft);font-size:14px}
+@media (max-width:560px){
+  .now{grid-template-columns:1fr}
+  .big{text-align:left;display:flex;align-items:center;gap:14px}
+  .forecast{grid-template-columns:repeat(5,minmax(0,1fr));gap:6px}
+  .day{padding:10px 2px}
+  .day .t{font-size:12px}
+  .stat b{font-size:15px}
+}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+</head>
+<body data-theme="clear-day">
+<header>
+  <div class="container bar">
+    <span class="logo">Sky<span>Cast</span></span>
+    <a class="home" href="https://samiuallahganaie.github.io/CodeNest/">Back to portfolio</a>
+  </div>
+</header>
+
+<main>
+  <div class="container">
+    <h1>Weather, anywhere</h1>
+    <p class="sub">Search for a city to see the current weather and a 5-day forecast.</p>
+
+    <form class="search" id="form" role="search">
+      <label for="q" hidden>City name</label>
+      <input id="q" type="search" placeholder="Search a city, e.g. Bengaluru" autocomplete="off" required>
+      <button class="btn" type="submit">Search</button>
+      <button class="btn glass" type="button" id="locate">Use my location</button>
+    </form>
+
+    <div class="chips" id="alts" hidden></div>
+    <div class="chips" id="recent" hidden></div>
+    <p id="msg" role="status" aria-live="polite"></p>
+
+    <section class="card" id="result" hidden aria-label="Weather result">
+      <div class="now">
+        <div>
+          <p class="place" id="place"></p>
+          <p class="where" id="where"></p>
+          <p class="cond" id="cond"></p>
+        </div>
+        <div class="big"><span class="icon" id="icon" aria-hidden="true"></span><span class="temp" id="temp"></span></div>
+      </div>
+
+      <div class="toolbar">
+        <div class="units" role="group" aria-label="Temperature unit">
+          <button type="button" data-u="c" aria-pressed="true">&deg;C</button>
+          <button type="button" data-u="f" aria-pressed="false">&deg;F</button>
+        </div>
+      </div>
+
+      <div class="stats">
+        <div class="stat"><small>Feels like</small><b id="feels"></b></div>
+        <div class="stat"><small>Humidity</small><b id="hum"></b></div>
+        <div class="stat"><small>Wind</small><b id="wind"></b></div>
+      </div>
+
+      <h2>5-day forecast</h2>
+      <div class="forecast" id="forecast"></div>
+    </section>
+
+    <p class="credit">Weather data by <a href="https://open-meteo.com/" target="_blank" rel="noopener noreferrer">Open-Meteo.com</a></p>
+  </div>
+</main>
+
+<footer>SkyCast | A project by Samiuallah | Built with HTML, CSS &amp; JavaScript</footer>
+
+<script>
+  const GEO = "https://geocoding-api.open-meteo.com/v1/search";
+  const FORECAST = "https://api.open-meteo.com/v1/forecast";
+
+  const $ = id => document.getElementById(id);
+  let unit = "c", data = null, place = null;
+
+  try { if (localStorage.getItem("skycast-unit") === "f") unit = "f"; } catch (e) {}
+
+  function el(tag, cls, text) {
+    const n = document.createElement(tag);
+    if (cls) n.className = cls;
+    if (text !== undefined) n.textContent = text;
+    return n;
+  }
+
+  function describe(code, isDay) {
+    if (code === 0) return isDay ? ["Clear sky", "\u2600\uFE0F", "clear-day"] : ["Clear sky", "\uD83C\uDF19", "clear-night"];
+    if (code === 1) return isDay ? ["Mainly clear", "\uD83C\uDF24\uFE0F", "clear-day"] : ["Mainly clear", "\uD83C\uDF19", "clear-night"];
+    if (code === 2) return ["Partly cloudy", "\u26C5", isDay ? "clear-day" : "clear-night"];
+    if (code === 3) return ["Overcast", "\u2601\uFE0F", "cloudy"];
+    if (code === 45 || code === 48) return ["Fog", "\uD83C\uDF2B\uFE0F", "fog"];
+    if (code >= 51 && code <= 57) return ["Drizzle", "\uD83C\uDF26\uFE0F", "rain"];
+    if ((code >= 61 && code <= 67) || (code >= 80 && code <= 82)) return ["Rain", "\uD83C\uDF27\uFE0F", "rain"];
+    if ((code >= 71 && code <= 77) || code === 85 || code === 86) return ["Snow", "\u2744\uFE0F", "snow"];
+    if (code >= 95) return ["Thunderstorm", "\u26C8\uFE0F", "storm"];
+    return ["Unknown", "\uD83C\uDF21\uFE0F", "cloudy"];
+  }
+
+  const temp = c => unit === "c" ? Math.round(c) + "\u00B0" : Math.round(c * 9 / 5 + 32) + "\u00B0";
+  const wind = k => unit === "c" ? Math.round(k) + " km/h" : Math.round(k * 0.621371) + " mph";
+
+  function setMsg(text, isError) {
+    const m = $("msg");
+    m.textContent = text || "";
+    m.className = isError ? "err" : "";
+  }
+
+  async function getJSON(url) {
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), 12000);
+    try {
+      const res = await fetch(url, { signal: ctrl.signal });
+      if (!res.ok) throw new Error("HTTP " + res.status);
+      return await res.json();
+    } finally { clearTimeout(timer); }
+  }
+
+  function label(p) { return [p.name, p.admin1, p.country].filter(Boolean).join(", "); }
+
+  function saveRecent(p) {
+    let list = [];
+    try { list = JSON.parse(localStorage.getItem("skycast-recent")) || []; } catch (e) {}
+    list = [p].concat(list.filter(x => !(x.latitude === p.latitude && x.longitude === p.longitude))).slice(0, 5);
+    try { localStorage.setItem("skycast-recent", JSON.stringify(list)); } catch (e) {}
+    renderRecent(list);
+  }
+  function getRecent() { try { return JSON.parse(localStorage.getItem("skycast-recent")) || []; } catch (e) { return []; } }
+
+  function renderRecent(list) {
+    const box = $("recent");
+    box.replaceChildren();
+    if (!list.length) { box.hidden = true; return; }
+    box.hidden = false;
+    box.append(el("span", "label", "Recent:"));
+    list.forEach(p => {
+      const b = el("button", "chip", p.name);
+      b.type = "button";
+      b.addEventListener("click", () => loadPlace(p));
+      box.append(b);
+    });
+  }
+
+  function renderAlts(results) {
+    const box = $("alts");
+    box.replaceChildren();
+    if (results.length < 2) { box.hidden = true; return; }
+    box.hidden = false;
+    box.append(el("span", "label", "Other matches:"));
+    results.slice(1).forEach(p => {
+      const b = el("button", "chip", label(p));
+      b.type = "button";
+      b.addEventListener("click", () => loadPlace(p));
+      box.append(b);
+    });
+  }
+
+  async function search(query) {
+    setMsg("Searching...");
+    try {
+      const j = await getJSON(GEO + "?name=" + encodeURIComponent(query) + "&count=5&language=en&format=json");
+      if (!j.results || !j.results.length) {
+        $("alts").hidden = true;
+        setMsg("No city found for \"" + query + "\". Check the spelling and try again.", true);
+        return;
+      }
+      renderAlts(j.results);
+      await loadPlace(j.results[0], true);
+    } catch (e) {
+      setMsg("Could not reach the weather service. Check your connection and try again.", true);
+    }
+  }
+
+  async function loadPlace(p, keepAlts) {
+    setMsg("Loading weather...");
+    if (!keepAlts) $("alts").hidden = true;
+    try {
+      const url = FORECAST + "?latitude=" + p.latitude + "&longitude=" + p.longitude +
+        "&current=temperature_2m,relative_humidity_2m,apparent_temperature,is_day,weather_code,wind_speed_10m" +
+        "&daily=weather_code,temperature_2m_max,temperature_2m_min&timezone=auto&forecast_days=5";
+      const j = await getJSON(url);
+      if (!j.current || !j.daily) throw new Error("Unexpected response");
+      data = j; place = p;
+      setMsg("");
+      render();
+      if (p.name !== "Your location") saveRecent(p);
+    } catch (e) {
+      setMsg("Could not load the weather. Please try again in a moment.", true);
+    }
+  }
+
+  function render() {
+    if (!data) return;
+    const c = data.current;
+    const [text, icon, theme] = describe(c.weather_code, c.is_day === 1);
+    document.body.dataset.theme = theme;
+
+    $("result").hidden = false;
+    $("place").textContent = place.name;
+    $("where").textContent = [place.admin1, place.country].filter(Boolean).join(", ");
+    $("cond").textContent = text;
+    $("icon").textContent = icon;
+    $("temp").textContent = temp(c.temperature_2m);
+    $("feels").textContent = temp(c.apparent_temperature);
+    $("hum").textContent = Math.round(c.relative_humidity_2m) + "%";
+    $("wind").textContent = wind(c.wind_speed_10m);
+
+    const box = $("forecast");
+    box.replaceChildren();
+    data.daily.time.forEach((day, i) => {
+      const d = new Date(day + "T00:00:00");
+      const name = i === 0 ? "Today" : d.toLocaleDateString("en-GB", { weekday: "short" });
+      const card = el("div", "day");
+      const t = el("div", "t");
+      t.append(document.createTextNode(temp(data.daily.temperature_2m_max[i]) + " "));
+      t.append(el("span", "", temp(data.daily.temperature_2m_min[i])));
+      card.append(el("div", "d", name), el("div", "i", describe(data.daily.weather_code[i], true)[1]), t);
+      card.setAttribute("title", describe(data.daily.weather_code[i], true)[0]);
+      box.append(card);
+    });
+  }
+
+  $("form").addEventListener("submit", e => {
+    e.preventDefault();
+    const q = $("q").value.trim();
+    if (q) search(q);
+  });
+
+  $("locate").addEventListener("click", () => {
+    if (!navigator.geolocation) { setMsg("Your browser does not support location.", true); return; }
+    setMsg("Getting your location...");
+    navigator.geolocation.getCurrentPosition(
+      pos => loadPlace({ name: "Your location", admin1: "", country: "", latitude: +pos.coords.latitude.toFixed(3), longitude: +pos.coords.longitude.toFixed(3) }),
+      () => setMsg("Location permission was denied. Search for a city instead.", true),
+      { timeout: 10000 }
+    );
+  });
+
+  document.querySelectorAll(".units button").forEach(b => b.addEventListener("click", () => {
+    unit = b.dataset.u;
+    try { localStorage.setItem("skycast-unit", unit); } catch (e) {}
+    document.querySelectorAll(".units button").forEach(x => x.setAttribute("aria-pressed", String(x === b)));
+    render();
+  }));
+  document.querySelectorAll(".units button").forEach(x => x.setAttribute("aria-pressed", String(x.dataset.u === unit)));
+
+  const recent = getRecent();
+  renderRecent(recent);
+  if (recent.length) loadPlace(recent[0]);
+</script>
+</body>
+</html>
