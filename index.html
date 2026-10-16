@@ -153,6 +153,7 @@ footer{text-align:center;padding:18px 0;color:var(--soft);font-size:14px}
 <script>
   const GEO = "https://geocoding-api.open-meteo.com/v1/search";
   const NOMINATIM = "https://nominatim.openstreetmap.org/search";
+  const REVERSE = "https://nominatim.openstreetmap.org/reverse";
   const FORECAST = "https://api.open-meteo.com/v1/forecast";
 
   const $ = id => document.getElementById(id);
@@ -263,17 +264,45 @@ footer{text-align:center;padding:18px 0;color:var(--soft);font-size:14px}
     return list.filter(p => { const k = p.name + "|" + p.admin1 + "|" + p.country; if (seen.has(k)) return false; seen.add(k); return true; });
   }
 
-  async function findPlaces(query) {
+  const sleep = ms => new Promise(r => setTimeout(r, ms));
+
+  async function lookup(q) {
     try {
-      const j = await getJSON(NOMINATIM + "?q=" + encodeURIComponent(query) + "&format=jsonv2&addressdetails=1&limit=6&accept-language=en");
+      const j = await getJSON(NOMINATIM + "?q=" + encodeURIComponent(q) + "&format=jsonv2&addressdetails=1&limit=6&accept-language=en");
       if (Array.isArray(j)) {
         const list = dedupe(j.filter(r => r && r.lat && r.lon).map(fromOSM));
         if (list.length) return list;
       }
     } catch (e) { /* fall back to the city search below */ }
-    const g = await getJSON(GEO + "?name=" + encodeURIComponent(query) + "&count=5&language=en&format=json");
+    const g = await getJSON(GEO + "?name=" + encodeURIComponent(q) + "&count=5&language=en&format=json");
     return (g.results || []).map(r => ({ name: r.name, admin1: r.admin1 || "", country: r.country || "", kind: "",
                                          latitude: r.latitude, longitude: r.longitude }));
+  }
+
+  // Tries the full text first. If nothing matches, drops words from the end and tries again,
+  // then ranks results that match the words that were dropped (for example a state or country).
+  async function findPlaces(query) {
+    let parts = query.split(",").map(x => x.trim()).filter(Boolean);
+    let joiner = ", ";
+    if (parts.length < 2) { parts = query.split(/\s+/).filter(Boolean); joiner = " "; }
+
+    for (let n = parts.length; n >= 1; n--) {
+      if (n < parts.length) await sleep(1100);          // be polite to the free search service
+      const used = parts.slice(0, n).join(joiner);
+      let list = await lookup(used);
+      if (!list.length) continue;
+
+      const dropped = parts.slice(n).map(x => x.toLowerCase());
+      if (dropped.length) {
+        const score = p => {
+          const hay = (p.admin1 + " " + p.country).toLowerCase();
+          return dropped.filter(d => hay.includes(d)).length;
+        };
+        list = list.map((p, i) => ({ p, i, sc: score(p) })).sort((a, b) => b.sc - a.sc || a.i - b.i).map(x => x.p);
+      }
+      return { list, used, trimmed: n < parts.length };
+    }
+    return { list: [], used: query, trimmed: false };
   }
 
   async function search(query) {
@@ -287,7 +316,8 @@ footer{text-align:center;padding:18px 0;color:var(--soft);font-size:14px}
     }
     setMsg("Searching...");
     try {
-      const results = await findPlaces(query);
+      const found = await findPlaces(query);
+      const results = found.list;
       if (!results.length) {
         $("alts").hidden = true;
         setMsg("No place found for \"" + query + "\". Try a nearby town, a postcode or coordinates.", true);
@@ -295,6 +325,9 @@ footer{text-align:center;padding:18px 0;color:var(--soft);font-size:14px}
       }
       renderAlts(results);
       await loadPlace(results[0], true);
+      if (found.trimmed && $("msg").className !== "err") {
+        setMsg("Showing results for \"" + found.used + "\". No exact match for \"" + query + "\".");
+      }
     } catch (e) {
       setMsg("Could not reach the search service. Check your connection and try again.", true);
     }
@@ -355,13 +388,33 @@ footer{text-align:center;padding:18px 0;color:var(--soft);font-size:14px}
     if (q) search(q);
   });
 
+  // Turns coordinates into a readable place name (village, town or area) using OpenStreetMap.
+  async function nameMyLocation(lat, lon) {
+    const base = { name: "Your location", admin1: "", country: "", kind: "", latitude: lat, longitude: lon };
+    try {
+      const r = await getJSON(REVERSE + "?lat=" + lat + "&lon=" + lon + "&format=jsonv2&zoom=14&addressdetails=1&accept-language=en");
+      const a = (r && r.address) || {};
+      const name = a.village || a.town || a.city || a.suburb || a.neighbourhood || a.hamlet ||
+                   a.city_district || a.municipality || a.county;
+      if (!name) return base;
+      const admin = [a.county || a.state_district, a.state].filter((x, i, arr) => x && x !== name && arr.indexOf(x) === i);
+      return { name, admin1: admin.join(", "), country: a.country || "", kind: "Your location", latitude: lat, longitude: lon };
+    } catch (e) {
+      return base;
+    }
+  }
+
   $("locate").addEventListener("click", () => {
     if (!navigator.geolocation) { setMsg("Your browser does not support location.", true); return; }
     setMsg("Getting your location...");
     navigator.geolocation.getCurrentPosition(
-      pos => loadPlace({ name: "Your location", admin1: "", country: "", latitude: +pos.coords.latitude.toFixed(3), longitude: +pos.coords.longitude.toFixed(3) }),
-      () => setMsg("Location permission was denied. Search for a city instead.", true),
-      { timeout: 10000 }
+      async pos => {
+        const lat = +pos.coords.latitude.toFixed(3), lon = +pos.coords.longitude.toFixed(3);
+        setMsg("Finding the name of your place...");
+        loadPlace(await nameMyLocation(lat, lon));
+      },
+      () => setMsg("Location permission was denied. Search for a place instead.", true),
+      { timeout: 10000, enableHighAccuracy: true }
     );
   });
 
